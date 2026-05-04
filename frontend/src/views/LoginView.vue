@@ -1,5 +1,5 @@
 <!-- ===================== Template 区块 ===================== -->
-<!-- 说明：登录页，包含用户名/密码表单、校验规则与提交逻辑 -->
+<!-- 说明：登录/注册页，通过 el-tabs 切换登录与注册表单 -->
 <template>
   <div class="login-wrapper">
     <el-card class="login-card">
@@ -9,45 +9,95 @@
           <div class="login-subtitle">图书管理系统</div>
         </div>
       </template>
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-position="top"
-        @keyup.enter="handleLogin"
-      >
-        <el-form-item label="用户名" prop="username">
-          <el-input
-            v-model="form.username"
-            placeholder="请输入用户名"
-            clearable
-            autocomplete="username"
-          />
-        </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            show-password
-            autocomplete="current-password"
-          />
-        </el-form-item>
-        <el-button
-          type="primary"
-          :loading="loading"
-          class="login-btn"
-          @click="handleLogin"
-        >
-          登录
-        </el-button>
-      </el-form>
+      <el-tabs v-model="activeTab" stretch>
+        <!-- 登录 Tab -->
+        <el-tab-pane label="登录" name="login">
+          <el-form
+            ref="loginFormRef"
+            :model="loginForm"
+            :rules="loginRules"
+            label-position="top"
+            @keyup.enter="handleLogin"
+          >
+            <el-form-item label="用户名" prop="username">
+              <el-input
+                v-model="loginForm.username"
+                placeholder="请输入用户名"
+                clearable
+                autocomplete="username"
+              />
+            </el-form-item>
+            <el-form-item label="密码" prop="password">
+              <el-input
+                v-model="loginForm.password"
+                type="password"
+                placeholder="请输入密码"
+                show-password
+                autocomplete="current-password"
+              />
+            </el-form-item>
+            <el-button
+              type="primary"
+              :loading="loginLoading"
+              class="submit-btn"
+              @click="handleLogin"
+            >
+              登录
+            </el-button>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 注册 Tab -->
+        <el-tab-pane label="注册" name="register">
+          <el-form
+            ref="registerFormRef"
+            :model="registerForm"
+            :rules="registerRules"
+            label-position="top"
+          >
+            <el-form-item label="用户名" prop="username">
+              <el-input
+                v-model="registerForm.username"
+                placeholder="请输入用户名（4-20个字符）"
+                clearable
+                autocomplete="username"
+              />
+            </el-form-item>
+            <el-form-item label="密码" prop="password">
+              <el-input
+                v-model="registerForm.password"
+                type="password"
+                placeholder="请输入密码（至少6位）"
+                show-password
+                autocomplete="new-password"
+              />
+            </el-form-item>
+            <el-form-item label="确认密码" prop="confirmPassword">
+              <el-input
+                v-model="registerForm.confirmPassword"
+                type="password"
+                placeholder="请再次输入密码"
+                show-password
+                autocomplete="new-password"
+              />
+            </el-form-item>
+            <el-button
+              type="primary"
+              :loading="registerLoading"
+              class="submit-btn"
+              @click="handleRegister"
+            >
+              注册
+            </el-button>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
 
 <!-- ===================== Script 区块 ===================== -->
-<!-- 说明：组合式 API，含表单校验、登录请求与成功后跳转逻辑 -->
+<!-- 说明：组合式 API，含登录与注册两套表单校验、请求与跳转逻辑 -->
 <script setup lang="ts">
 import { ref, reactive } from "vue";
 import type { FormInstance, FormRules } from "element-plus";
@@ -59,26 +109,29 @@ import http from "../api/http";
 const router = useRouter();
 const authStore = useAuthStore();
 
-const formRef = ref<FormInstance>();
-const loading = ref(false);
+// 当前激活的 Tab
+const activeTab = ref<"login" | "register">("login");
 
-const form = reactive({ username: "", password: "" });
+// ---- 登录 ----
+const loginFormRef = ref<FormInstance>();
+const loginLoading = ref(false);
+const loginForm = reactive({ username: "", password: "" });
 
-const rules: FormRules = {
+const loginRules: FormRules = {
   username: [{ required: true, message: "请输入用户名", trigger: "blur" }],
   password: [{ required: true, message: "请输入密码", trigger: "blur" }],
 };
 
 async function handleLogin() {
-  if (!formRef.value) return;
-  const valid = await formRef.value.validate().catch(() => false);
+  if (!loginFormRef.value) return;
+  const valid = await loginFormRef.value.validate().catch(() => false);
   if (!valid) return;
 
-  loading.value = true;
+  loginLoading.value = true;
   try {
     const res = await http.post<{ code: number; message: string; data: any }>(
       "/auth/login",
-      { username: form.username, password: form.password }
+      { username: loginForm.username, password: loginForm.password }
     );
     if (res.data.code === 0) {
       authStore.setUser({
@@ -93,7 +146,71 @@ async function handleLogin() {
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || "登录失败，请稍后重试");
   } finally {
-    loading.value = false;
+    loginLoading.value = false;
+  }
+}
+
+// ---- 注册 ----
+const registerFormRef = ref<FormInstance>();
+const registerLoading = ref(false);
+const registerForm = reactive({
+  username: "",
+  password: "",
+  confirmPassword: "",
+});
+
+// 确认密码校验器
+function validateConfirm(_rule: any, value: string, callback: any) {
+  if (value !== registerForm.password) {
+    callback(new Error("两次输入的密码不一致"));
+  } else {
+    callback();
+  }
+}
+
+const registerRules: FormRules = {
+  username: [
+    { required: true, message: "请输入用户名", trigger: "blur" },
+    { min: 4, max: 20, message: "用户名长度为 4-20 个字符", trigger: "blur" },
+  ],
+  password: [
+    { required: true, message: "请输入密码", trigger: "blur" },
+    { min: 6, message: "密码至少 6 位", trigger: "blur" },
+  ],
+  confirmPassword: [
+    { required: true, message: "请确认密码", trigger: "blur" },
+    { validator: validateConfirm, trigger: "blur" },
+  ],
+};
+
+async function handleRegister() {
+  if (!registerFormRef.value) return;
+  const valid = await registerFormRef.value.validate().catch(() => false);
+  if (!valid) return;
+
+  registerLoading.value = true;
+  try {
+    const res = await http.post<{ code: number; message: string; data: any }>(
+      "/auth/register",
+      { username: registerForm.username, password: registerForm.password }
+    );
+    if (res.data.code === 0) {
+      ElMessage.success("注册成功，请登录");
+      // 注册成功后切换到登录 Tab，并预填用户名
+      loginForm.username = registerForm.username;
+      loginForm.password = "";
+      registerForm.username = "";
+      registerForm.password = "";
+      registerForm.confirmPassword = "";
+      registerFormRef.value.resetFields();
+      activeTab.value = "login";
+    } else {
+      ElMessage.error(res.data.message || "注册失败");
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || "注册失败，请稍后重试");
+  } finally {
+    registerLoading.value = false;
   }
 }
 </script>
@@ -132,7 +249,7 @@ async function handleLogin() {
   color: #909399;
 }
 
-.login-btn {
+.submit-btn {
   width: 100%;
   margin-top: 8px;
 }
